@@ -3,7 +3,7 @@ import sys
 
 from . import core
 
-HELP = "Tab focus  Enter move  F move+fullscreen  M maximize  R refresh  Q quit"
+HELP = "Tab focus  Enter move  F move+full  M maximize  P default screen  R refresh  Q quit"
 
 
 class MoverTui:
@@ -147,6 +147,14 @@ class MoverTui:
             self.action(fullscreen=True)
         elif key in (ord("m"), ord("M")):
             self.action(maximize=True)
+        elif key in (ord("p"), ord("P")):
+            if self.monitors:
+                monitor = self.monitors[self.monitor_index]
+                core.set_primary(monitor)
+                self.message = f'Set default screen to {monitor["name"]}.'
+                self.reload()
+            else:
+                self.message = "No monitors found."
         elif key in (curses.KEY_UP, ord("k"), ord("K")):
             if self.focus == 0:
                 self.window_index -= 1

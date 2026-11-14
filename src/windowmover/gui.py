@@ -46,6 +46,8 @@ class MoverWindow(QWidget):
         move_full_button.clicked.connect(lambda: self.apply(True, False))
         maximize_button = QPushButton("Maximize")
         maximize_button.clicked.connect(lambda: self.apply(False, True))
+        default_button = QPushButton("Set default screen")
+        default_button.clicked.connect(self.set_default)
         refresh_button = QPushButton("Refresh")
         refresh_button.clicked.connect(self.refresh)
         close_button = QPushButton("Close")
@@ -55,6 +57,7 @@ class MoverWindow(QWidget):
         buttons.addWidget(move_button)
         buttons.addWidget(move_full_button)
         buttons.addWidget(maximize_button)
+        buttons.addWidget(default_button)
         buttons.addWidget(refresh_button)
         buttons.addStretch(1)
         buttons.addWidget(close_button)
@@ -102,6 +105,16 @@ class MoverWindow(QWidget):
             self.window_list.setCurrentRow(0)
         if not self.monitor_list.currentItem() and self.monitor_list.count():
             self.monitor_list.setCurrentRow(0)
+
+    def set_default(self):
+        monitor_item = self.monitor_list.currentItem()
+        if not monitor_item:
+            self.status.setText("Select a monitor.")
+            return
+        monitor = monitor_item.data(Qt.UserRole)
+        core.set_primary(monitor)
+        self.status.setText(f'Set default screen to {monitor["name"]}.')
+        self.refresh()
 
     def apply(self, fullscreen, maximize):
         window_item = self.window_list.currentItem()

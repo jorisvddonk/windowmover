@@ -11,16 +11,22 @@ HELP = """usage: windowmover [command] [options]
 Commands:
   list                     List monitors and windows
   move --to MONITOR        Move a window to a monitor
+  primary MONITOR          Set MONITOR as the default (primary) screen
+  output list              List all outputs (including disabled)
+  output on OUTPUT         Turn an output on
+  output off OUTPUT        Turn an output off
+  output scale OUTPUT S    Set an output's scale (e.g. 1.15)
   tui                      Open the terminal UI
   gui                      Open the graphical UI
 
-Legacy options:
+Legacy flags:
   --list
   --to MONITOR --class CLASS | --title TITLE [--fullscreen] [--maximize]
 
 Examples:
   windowmover list
   windowmover move --to DP-4 --class steam_app_2605790 --fullscreen
+  windowmover primary DP-4
   windowmover tui
   windowmover gui
 """
@@ -70,6 +76,64 @@ def move_parser():
     return parser
 
 
+def cmd_primary(args):
+    monitors = core.get_monitors()
+    monitor = core.find_monitor(monitors, args.monitor)
+    if not monitor:
+        print(f"Unknown monitor: {args.monitor}", file=sys.stderr)
+        return 1
+    core.set_primary(monitor)
+    print(f'Set default screen to {monitor["name"]}.')
+    return 0
+
+
+def primary_parser():
+    parser = argparse.ArgumentParser(prog="windowmover primary")
+    parser.add_argument("monitor", metavar="MONITOR")
+    return parser
+
+
+def output_parser():
+    parser = argparse.ArgumentParser(prog="windowmover output")
+    parser.add_argument("action", choices=["list", "on", "off", "enable", "disable", "scale"])
+    parser.add_argument("output", nargs="?", metavar="OUTPUT")
+    parser.add_argument("scale", nargs="?", metavar="SCALE")
+    return parser
+
+
+def cmd_output(args):
+    if args.action == "list":
+        for out in core.get_outputs():
+            state = "enabled" if out["enabled"] else "disabled"
+            print(f"OUTPUT  {out['name']:<10} {state:<8} scale {out['scale']}")
+        return 0
+    if not args.output:
+        print("Specify an output name.", file=sys.stderr)
+        return 2
+    output = core.find_output(core.get_outputs(), args.output)
+    if not output:
+        print(f"Unknown output: {args.output}", file=sys.stderr)
+        return 1
+    if args.action in ("on", "enable"):
+        core.set_output_enabled(output, True)
+        print(f"Turned on {output['name']}.")
+        return 0
+    if args.action in ("off", "disable"):
+        core.set_output_enabled(output, False)
+        print(f"Turned off {output['name']}.")
+        return 0
+    if args.action == "scale":
+        try:
+            scale = float(args.scale)
+        except (TypeError, ValueError):
+            print("Specify a numeric scale, e.g. 1.15.", file=sys.stderr)
+            return 2
+        core.set_output_scale(output, args.scale)
+        print(f"Set {output['name']} scale to {args.scale}.")
+        return 0
+    return 2
+
+
 def cmd_move(args):
     monitors = core.get_monitors()
     monitor = core.find_monitor(monitors, args.to)
@@ -94,6 +158,10 @@ def main(argv=None):
             return cmd_list()
         if command == "move":
             return cmd_move(move_parser().parse_args(argv[1:]))
+        if command in ("primary", "default"):
+            return cmd_primary(primary_parser().parse_args(argv[1:]))
+        if command == "output":
+            return cmd_output(output_parser().parse_args(argv[1:]))
         if command == "tui":
             from .tui import main as tui_main
             return tui_main(argv[1:])

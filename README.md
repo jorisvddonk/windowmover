@@ -68,7 +68,9 @@ windowmover-gui
 ```
 
 The window opens on the monitor under the mouse cursor. Select a window and a
-monitor, then choose **Move**, **Move + Fullscreen**, or **Maximize**.
+monitor, then choose **Move**, **Move + Fullscreen**, **Maximize**, or
+**Set default screen** (makes that monitor the primary screen, so new games
+open there).
 
 ### TUI
 
@@ -83,6 +85,7 @@ windowmover tui
 | `Enter` | Move selected window to selected monitor |
 | `f` | Move + fullscreen |
 | `m` | Move + maximize |
+| `p` | Set selected monitor as default screen |
 | `r` | Refresh |
 | `q` | Quit |
 
@@ -93,6 +96,7 @@ windowmover list
 windowmover move --to DP-4 --class steam_app_2605790 --fullscreen
 windowmover move --to DP-3 --title "Deep Rock"
 windowmover move --to HDMI-A-3 --class firefox --maximize
+windowmover primary DP-4
 ```
 
 Legacy flags are accepted too:

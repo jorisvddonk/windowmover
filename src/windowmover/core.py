@@ -41,6 +41,57 @@ def edid_model(name):
     return ""
 
 
+def get_outputs():
+    try:
+        data = json.loads(subprocess.check_output(["kscreen-doctor", "-j"], text=True))
+    except Exception:
+        return []
+    outputs = []
+    for out in data.get("outputs", []):
+        if not out.get("connected"):
+            continue
+        outputs.append(
+            {
+                "name": out.get("name", ""),
+                "enabled": bool(out.get("enabled")),
+                "connected": bool(out.get("connected")),
+                "scale": out.get("scale", 1.0),
+                "priority": out.get("priority") or 99,
+            }
+        )
+    outputs.sort(key=lambda item: item["priority"])
+    return outputs
+
+
+def find_output(outputs, name):
+    for out in outputs:
+        if out["name"].lower() == name.lower():
+            return out
+    for out in outputs:
+        if name.lower() in out["name"].lower():
+            return out
+    return None
+
+
+def set_output_enabled(output, enabled):
+    action = "enable" if enabled else "disable"
+    subprocess.run(
+        ["kscreen-doctor", f"output.{output['name']}.{action}"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+def set_output_scale(output, scale):
+    subprocess.run(
+        ["kscreen-doctor", f"output.{output['name']}.scale.{scale}"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
 def get_monitors():
     try:
         data = json.loads(subprocess.check_output(["kscreen-doctor", "-j"], text=True))
@@ -109,57 +160,65 @@ def get_windows(exclude_titles=("Window Mover",)):
     return windows
 
 
+def _gdbus(*args):
+    try:
+        return subprocess.run(
+            [GDBUS, "call", "--session", "--dest", "org.kde.KWin", *args],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return None
+
+
 def kwin_run(script, plugin_name="windowmover_action"):
     path = f"/tmp/{plugin_name}.js"
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(script)
-    subprocess.run(
-        [
-            GDBUS,
-            "call",
-            "--session",
-            "--dest",
-            "org.kde.KWin",
+    _gdbus(
+        "--object-path",
+        "/Scripting",
+        "--method",
+        "org.kde.kwin.Scripting.unloadScript",
+        plugin_name,
+    )
+    result = _gdbus(
+        "--object-path",
+        "/Scripting",
+        "--method",
+        "org.kde.kwin.Scripting.loadScript",
+        path,
+        plugin_name,
+    )
+    script_id = None
+    if result is not None:
+        import re
+
+        match = re.search(r"\((\d+),?\)", result.stdout or "")
+        if match:
+            script_id = match.group(1)
+    if script_id is not None:
+        _gdbus(
+            "--object-path",
+            f"/Scripting/Script{script_id}",
+            "--method",
+            "org.kde.kwin.Script.run",
+        )
+        _gdbus(
             "--object-path",
             "/Scripting",
             "--method",
             "org.kde.kwin.Scripting.unloadScript",
             plugin_name,
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    subprocess.run(
-        [
-            GDBUS,
-            "call",
-            "--session",
-            "--dest",
-            "org.kde.KWin",
-            "--object-path",
-            "/Scripting",
-            "--method",
-            "org.kde.kwin.Scripting.loadScript",
-            path,
-            plugin_name,
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    subprocess.run(
-        [
-            GDBUS,
-            "call",
-            "--session",
-            "--dest",
-            "org.kde.KWin",
-            "--object-path",
-            "/Scripting",
-            "--method",
-            "org.kde.kwin.Scripting.start",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        )
+        return
+    _gdbus(
+        "--object-path",
+        "/Scripting",
+        "--method",
+        "org.kde.kwin.Scripting.start",
     )
 
 
@@ -197,9 +256,14 @@ function findWindow() {{
 var target = findWindow();
 var screen = outByName(OUT);
 if (target && screen) {{
+    try {{ target.fullScreen = false; }} catch (e) {{}}
+    try {{ target.setMaximize(false, false); }} catch (e) {{}}
     workspace.sendClientToScreen(target, screen);
-    if (FULL) {{ try {{ target.fullScreen = true; }} catch (e) {{}} }}
-    if (MAX) {{ try {{ target.setMaximize(true, true); }} catch (e) {{}} }}
+    if (FULL) {{
+        try {{ target.frameGeometry = screen.geometry; }} catch (e) {{}}
+        try {{ target.fullScreen = true; }} catch (e) {{}}
+    }}
+    if (MAX && !FULL) {{ try {{ target.setMaximize(true, true); }} catch (e) {{}} }}
     try {{ workspace.activeWindow = target; }} catch (e) {{}}
 }}
 """
@@ -259,3 +323,18 @@ def find_monitor(monitors, name):
         if name.lower() in monitor["label"].lower():
             return monitor
     return None
+
+
+def set_primary(monitor):
+    subprocess.run(
+        ["kscreen-doctor", f"output.{monitor['name']}.primary"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    subprocess.run(
+        ["xrandr", "--output", monitor["name"], "--primary"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
