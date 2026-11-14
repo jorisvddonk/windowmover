@@ -85,7 +85,12 @@ windowmover tui
 | `Enter` | Move selected window to selected monitor |
 | `f` | Move + fullscreen |
 | `m` | Move + maximize |
+| `c` | Center window on monitor |
+| `t` / `T` | Tile window left / right half |
+| `n` | Minimize window |
+| `v` | Toggle window fullscreen |
 | `p` | Set selected monitor as default screen |
+| `o` / `Enter` on Outputs | Toggle selected output on/off |
 | `r` | Refresh |
 | `q` | Quit |
 
@@ -95,9 +100,27 @@ windowmover tui
 windowmover list
 windowmover move --to DP-4 --class steam_app_2605790 --fullscreen
 windowmover move --to DP-3 --title "Deep Rock"
-windowmover move --to HDMI-A-3 --class firefox --maximize
+windowmover move --to DP-4 --title "Firefox" --tile left
+windowmover move --to DP-4 --title "Firefox" --center
+windowmover move --to DP-4 --title "Firefox" --geometry 1600x900 --pos 300,200
 windowmover primary DP-4
+windowmover output list
+windowmover output off HDMI-A-3
+windowmover output on HDMI-A-3
+windowmover output scale HDMI-A-3 1.15
+windowmover output mode DP-4 3440x1440@144
+windowmover output pos DP-3 0,0
+windowmover output rotate DP-3 left
+windowmover win minimize --title "Firefox"
+windowmover win full-toggle --class steam_app_2321470
+windowmover win opacity 90 --title "Discord"
+windowmover layout save gaming
+windowmover layout load gaming
 ```
+
+The GUI has the same powers: an Outputs column (double-click toggles),
+plus Center / Tile Left / Tile Right / Minimize / Fullscreen toggle /
+Raise / Close window buttons.
 
 Legacy flags are accepted too:
 

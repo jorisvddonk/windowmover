@@ -92,11 +92,28 @@ def set_output_scale(output, scale):
     )
 
 
+def _xrandr_offsets():
+    offsets = {}
+    try:
+        output = subprocess.check_output(["xrandr", "--query"], text=True)
+    except Exception:
+        return offsets
+    import re
+
+    for line in output.splitlines():
+        match = re.match(r"^(\S+)\s+connected.*?(\d+)x(\d+)\+(\d+)\+(\d+)", line)
+        if match:
+            name, _, _, x, y = match.groups()
+            offsets[name] = (int(x), int(y))
+    return offsets
+
+
 def get_monitors():
     try:
         data = json.loads(subprocess.check_output(["kscreen-doctor", "-j"], text=True))
     except Exception:
         return []
+    offsets = _xrandr_offsets()
     monitors = []
     for out in data.get("outputs", []):
         if not out.get("enabled") or not out.get("connected"):
@@ -115,6 +132,7 @@ def get_monitors():
             label += f" - {model}"
         if width and height:
             label += f" ({width}x{height})"
+        x, y = offsets.get(name, (0, 0))
         monitors.append(
             {
                 "name": name,
@@ -122,6 +140,8 @@ def get_monitors():
                 "model": model,
                 "width": width,
                 "height": height,
+                "x": x,
+                "y": y,
                 "priority": out.get("priority") or 99,
             }
         )
@@ -338,3 +358,222 @@ def set_primary(monitor):
         stderr=subprocess.DEVNULL,
         check=False,
     )
+
+
+def _wmctrl(*args):
+    try:
+        subprocess.run(
+            [WMCTRL, *args],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def place_window(window, x=None, y=None, width=None, height=None):
+    wid = window["id"]
+    gx = window["x"] if x is None else x
+    gy = window["y"] if y is None else y
+    gw = window["width"] if width is None else width
+    gh = window["height"] if height is None else height
+    _wmctrl("-i", "-r", wid, "-e", f"0,{gx},{gy},{gw},{gh}")
+
+
+def center_window(window, monitor):
+    w = min(window["width"], monitor["width"])
+    h = min(window["height"], monitor["height"])
+    x = monitor["x"] + (monitor["width"] - w) // 2
+    y = monitor["y"] + (monitor["height"] - h) // 2
+    place_window(window, x, y, w, h)
+
+
+TILE_AREAS = {
+    "left": (0.0, 0.0, 0.5, 1.0),
+    "right": (0.5, 0.0, 0.5, 1.0),
+    "top": (0.0, 0.0, 1.0, 0.5),
+    "bottom": (0.0, 0.5, 1.0, 0.5),
+    "topleft": (0.0, 0.0, 0.5, 0.5),
+    "topright": (0.5, 0.0, 0.5, 0.5),
+    "bottomleft": (0.0, 0.5, 0.5, 0.5),
+    "bottomright": (0.5, 0.5, 0.5, 0.5),
+    "center": (0.25, 0.25, 0.5, 0.5),
+    "full": (0.0, 0.0, 1.0, 1.0),
+}
+
+
+def tile_window(window, monitor, area):
+    spec = TILE_AREAS.get(area)
+    if not spec:
+        return False
+    fx, fy, fw, fh = spec
+    x = monitor["x"] + int(monitor["width"] * fx)
+    y = monitor["y"] + int(monitor["height"] * fy)
+    w = int(monitor["width"] * fw)
+    h = int(monitor["height"] * fh)
+    _wmctrl("-i", "-r", window["id"], "-b", "remove,fullscreen, maximized_vert, maximized_horz")
+    place_window(window, x, y, w, h)
+    return True
+
+
+def window_state(window, action):
+    wid = window["id"]
+    if action == "minimize":
+        _wmctrl("-i", "-r", wid, "-b", "add,hidden")
+    elif action == "unminimize":
+        _wmctrl("-i", "-r", wid, "-b", "remove,hidden")
+        _wmctrl("-i", "-a", wid)
+    elif action == "maximize":
+        _wmctrl("-i", "-r", wid, "-b", "add,maximized_vert,maximized_horz")
+    elif action == "unmaximize":
+        _wmctrl("-i", "-r", wid, "-b", "remove,maximized_vert,maximized_horz")
+    elif action == "fullscreen-on":
+        _wmctrl("-i", "-r", wid, "-b", "add,fullscreen")
+    elif action == "fullscreen-off":
+        _wmctrl("-i", "-r", wid, "-b", "remove,fullscreen")
+    elif action == "fullscreen-toggle":
+        _wmctrl("-i", "-r", wid, "-b", "toggle,fullscreen")
+    elif action == "above-on":
+        _wmctrl("-i", "-r", wid, "-b", "add,above")
+    elif action == "above-off":
+        _wmctrl("-i", "-r", wid, "-b", "remove,above")
+    elif action == "below-on":
+        _wmctrl("-i", "-r", wid, "-b", "add,below")
+    elif action == "below-off":
+        _wmctrl("-i", "-r", wid, "-b", "remove,below")
+    elif action == "sticky-on":
+        _wmctrl("-i", "-r", wid, "-b", "add,sticky")
+    elif action == "sticky-off":
+        _wmctrl("-i", "-r", wid, "-b", "remove,sticky")
+    elif action == "shade-on":
+        _wmctrl("-i", "-r", wid, "-b", "add,shaded")
+    elif action == "shade-off":
+        _wmctrl("-i", "-r", wid, "-b", "remove,shaded")
+    elif action == "raise":
+        _wmctrl("-i", "-a", wid)
+    elif action == "close":
+        _wmctrl("-i", "-c", wid)
+    else:
+        return False
+    return True
+
+
+def window_opacity(window, percent):
+    try:
+        pct = max(0, min(100, int(percent)))
+    except (TypeError, ValueError):
+        return False
+    if pct >= 100:
+        subprocess.run(
+            ["xprop", "-id", window["id"], "-remove", "_NET_WM_WINDOW_OPACITY"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return True
+    value = int(0xFFFFFFFF * pct / 100)
+    subprocess.run(
+        [
+            "xprop", "-id", window["id"], "-f", "_NET_WM_WINDOW_OPACITY",
+            "32c", "-set", "_NET_WM_WINDOW_OPACITY", str(value),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return True
+
+
+def set_output_mode(output, mode):
+    subprocess.run(
+        ["kscreen-doctor", f"output.{output['name']}.mode.{mode}"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+def set_output_position(output, x, y):
+    subprocess.run(
+        ["kscreen-doctor", f"output.{output['name']}.position.{x},{y}"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+def set_output_rotation(output, rotation):
+    subprocess.run(
+        ["kscreen-doctor", f"output.{output['name']}.rotation.{rotation}"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+def layout_dir():
+    path = os.path.join(os.path.expanduser("~"), ".config", "windowmover", "layouts")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def layout_save(name):
+    monitors = get_monitors()
+    entries = []
+    for window in get_windows():
+        entries.append(
+            {
+                "class": window["class_full"],
+                "title": window["title"],
+                "x": window["x"],
+                "y": window["y"],
+                "width": window["width"],
+                "height": window["height"],
+                "monitors": [m["name"] for m in monitors],
+            }
+        )
+    path = os.path.join(layout_dir(), f"{name}.json")
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(entries, handle, indent=2)
+    return path
+
+
+def layout_load(name):
+    path = os.path.join(layout_dir(), f"{name}.json")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            entries = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    monitors = {m["name"]: m for m in get_monitors()}
+    windows = get_windows()
+    applied = 0
+    for entry in entries:
+        window = find_window(windows, entry.get("class"), None)
+        if not window and entry.get("title"):
+            window = find_window(windows, None, entry.get("title"))
+        if not window:
+            continue
+        target = None
+        for mname in entry.get("monitors", []):
+            if mname in monitors:
+                target = monitors[mname]
+                break
+        if target is None:
+            place_window(window, entry["x"], entry["y"], entry["width"], entry["height"])
+        else:
+            move_window(window, target)
+            place_window(window, entry["x"], entry["y"], entry["width"], entry["height"])
+        applied += 1
+    return applied
+
+
+def layout_list():
+    try:
+        return sorted(
+            f[:-5] for f in os.listdir(layout_dir()) if f.endswith(".json")
+        )
+    except OSError:
+        return []
