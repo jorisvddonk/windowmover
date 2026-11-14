@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Move Game to ASUS (DP-4)
+Comment=Move Deep Rock Galactic: Rogue Core to DP-4 and fullscreen it
+Exec=windowmover move --to DP-4 --class steam_app_2605790 --fullscreen
+Icon=video-display
+Terminal=false
+Categories=Game;Utility;
+StartupNotify=false

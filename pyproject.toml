@@ -1,0 +1,34 @@
+[project]
+name = "windowmover"
+version = "0.1.0"
+description = "Move windows between monitors on KDE Plasma"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Joris" }]
+keywords = ["kde", "plasma", "kwin", "window-manager", "monitor"]
+classifiers = [
+    "Environment :: X11 Applications :: KDE",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Desktop Environment :: K Desktop Environment (KDE)",
+]
+dependencies = []
+
+[project.optional-dependencies]
+gui = ["PySide6"]
+
+[project.scripts]
+windowmover = "windowmover.cli:main"
+windowmover-tui = "windowmover.tui:main"
+windowmover-gui = "windowmover.gui:main"
+
+[project.urls]
+Homepage = "https://github.com/jorisvddonk/windowmover"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/windowmover"]

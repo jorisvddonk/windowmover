@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Window Mover
+Comment=Move windows between monitors
+Exec=windowmover-gui
+Icon=preferences-system-windows
+Terminal=false
+Categories=System;Utility;
+StartupNotify=true
+StartupWMClass=windowmover

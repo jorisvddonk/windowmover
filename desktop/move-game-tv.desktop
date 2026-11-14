@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Move Game to Sony TV (HDMI-A-3)
+Comment=Move Deep Rock Galactic: Rogue Core to HDMI-A-3 and fullscreen it
+Exec=windowmover move --to HDMI-A-3 --class steam_app_2605790 --fullscreen
+Icon=video-display
+Terminal=false
+Categories=Game;Utility;
+StartupNotify=false
